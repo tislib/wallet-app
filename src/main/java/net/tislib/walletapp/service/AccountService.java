@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -33,13 +34,26 @@ public class AccountService {
 
     @Transactional
     public AccountDto createAccount(AccountDto accountDto) {
+        validateAccountDto(accountDto);
         AccountEntity account = accountMapper.toEntity(accountDto);
         AccountEntity savedAccount = accountRepository.save(account);
         return accountMapper.toDto(savedAccount);
     }
 
+    private void validateAccountDto(AccountDto accountDto) {
+        if (accountDto.getName() == null) {
+            throw new IllegalArgumentException("Account name cannot be null");
+        }
+
+        if (accountDto.getBalance() != null && accountDto.getBalance().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Account balance must be positive or zero");
+        }
+    }
+
     @Transactional
     public AccountDto updateAccount(Long id, AccountDto accountDto) {
+        validateAccountDto(accountDto);
+
         AccountEntity existingAccount = accountRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + id));
 
@@ -50,9 +64,13 @@ public class AccountService {
 
     @Transactional
     public void deleteAccount(Long id) {
-        if (!accountRepository.existsById(id)) {
-            throw new NoSuchElementException("Account not found with id: " + id);
+        AccountEntity account = accountRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + id));
+
+        if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalStateException("Cannot delete account with a positive balance");
         }
+
         accountRepository.deleteById(id);
     }
 }

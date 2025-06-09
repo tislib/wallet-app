@@ -181,7 +181,7 @@ public class AccountControllerIT {
     @Test
     public void testDeleteAccount() {
         // Create a test account first
-        AccountDto createdAccount = createTestAccount("Delete Test Account", "JPY", new BigDecimal("500.00"));
+        AccountDto createdAccount = createTestAccount("Delete Test Account", "JPY", new BigDecimal("0.00"));
 
         // Delete the account
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
@@ -197,6 +197,71 @@ public class AccountControllerIT {
                 "/accounts/" + createdAccount.getId(), AccountDto.class);
 
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    public void testDeleteAccountWithBalance() {
+        // Create a test account with a balance
+        AccountDto createdAccount = createTestAccount("Delete Test Account With Balance", "JPY", new BigDecimal("500.00"));
+
+        // Try to delete the account with balance
+        ResponseEntity<Void> deleteResponse = restTemplate.exchange(
+                "/accounts/" + createdAccount.getId(),
+                HttpMethod.DELETE,
+                null,
+                Void.class);
+
+        // Should return a bad request status
+        assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Verify the account still exists
+        ResponseEntity<AccountDto> getResponse = restTemplate.getForEntity(
+                "/accounts/" + createdAccount.getId(), AccountDto.class);
+
+        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getResponse.getBody()).isNotNull();
+        assertThat(getResponse.getBody().getId()).isEqualTo(createdAccount.getId());
+    }
+
+    @Test
+    public void testCreateAccountWithNullName() {
+        // Create an account DTO with null name
+        AccountDto accountDto = new AccountDto();
+        accountDto.setCurrency("USD");
+        accountDto.setBalance(new BigDecimal("100.00"));
+
+        HttpEntity<AccountDto> requestEntity = new HttpEntity<>(accountDto);
+
+        // Try to create the account
+        ResponseEntity<AccountDto> response = restTemplate.exchange(
+                "/accounts",
+                HttpMethod.POST,
+                requestEntity,
+                AccountDto.class);
+
+        // Should return a bad request status
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    public void testCreateAccountWithNegativeBalance() {
+        // Create an account DTO with negative balance
+        AccountDto accountDto = new AccountDto();
+        accountDto.setName("Negative Balance Account");
+        accountDto.setCurrency("USD");
+        accountDto.setBalance(new BigDecimal("-100.00"));
+
+        HttpEntity<AccountDto> requestEntity = new HttpEntity<>(accountDto);
+
+        // Try to create the account
+        ResponseEntity<AccountDto> response = restTemplate.exchange(
+                "/accounts",
+                HttpMethod.POST,
+                requestEntity,
+                AccountDto.class);
+
+        // Should return a bad request status
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
@@ -240,6 +305,15 @@ public class AccountControllerIT {
 
         assertThat(foundAccount1).isTrue();
         assertThat(foundAccount2).isTrue();
+
+        // Set balance to zero before deleting
+        account1.setBalance(BigDecimal.ZERO);
+        HttpEntity<AccountDto> updateRequest = new HttpEntity<>(account1);
+        restTemplate.exchange(
+                "/accounts/" + account1.getId(),
+                HttpMethod.PUT,
+                updateRequest,
+                AccountDto.class);
 
         // Delete one account
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
