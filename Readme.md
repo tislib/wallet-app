@@ -7,9 +7,8 @@ Wallet APP
 3. Withdraw
 4. Permission system
 5. Transfer
-6. Multi Currency
-7. Wallet Events
-8. Dynamic Wallet Restrictions
+6. Wallet Events
+7. Dynamic Wallet Restrictions
 
 ## Tech Stack
 1. Java 17
