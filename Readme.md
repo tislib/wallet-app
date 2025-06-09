@@ -5,8 +5,8 @@ Wallet APP
 1. Accounts
 2. Deposit
 3. Withdraw
-4. Permission system
-5. Transfer
+4. Transfer
+5. Permission system
 6. Wallet Events
 7. Dynamic Wallet Restrictions
 

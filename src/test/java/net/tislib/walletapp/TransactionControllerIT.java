@@ -3,6 +3,7 @@ package net.tislib.walletapp;
 import net.tislib.walletapp.dto.AccountDto;
 import net.tislib.walletapp.dto.DepositTransactionData;
 import net.tislib.walletapp.dto.TransactionDto;
+import net.tislib.walletapp.dto.TransferTransactionData;
 import net.tislib.walletapp.dto.WithdrawTransactionData;
 import net.tislib.walletapp.model.TransactionStatus;
 import net.tislib.walletapp.model.TransactionType;
@@ -76,6 +77,27 @@ public class TransactionControllerIT {
 
         ResponseEntity<TransactionDto> response = restTemplate.postForEntity(
                 "/accounts/" + accountId + "/transactions", transactionDto, TransactionDto.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+
+        return response.getBody();
+    }
+
+    // Helper method to create a transfer transaction
+    private TransactionDto createTransferTransaction(Long sourceAccountId, Long destinationAccountId, BigDecimal amount, String description) {
+        TransferTransactionData transferData = new TransferTransactionData();
+        transferData.setDestinationAccountId(destinationAccountId);
+        transferData.setAmount(amount);
+        transferData.setDescription(description);
+
+        TransactionDto transactionDto = new TransactionDto();
+        transactionDto.setType(TransactionType.TRANSFER);
+        transactionDto.setAccountId(sourceAccountId);
+        transactionDto.setData(transferData);
+
+        ResponseEntity<TransactionDto> response = restTemplate.postForEntity(
+                "/accounts/" + sourceAccountId + "/transactions", transactionDto, TransactionDto.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
@@ -328,5 +350,69 @@ public class TransactionControllerIT {
         // Check the account balance
         BigDecimal balance = getAccountBalance(account.getId());
         assertThat(balance).isEqualByComparingTo(new BigDecimal("500.00"));
+    }
+
+    @Test
+    public void testTransferBetweenAccounts() {
+        // Create source account
+        AccountDto sourceAccount = createTestAccount("Transfer Source Account", "USD");
+
+        // Create destination account
+        AccountDto destinationAccount = createTestAccount("Transfer Destination Account", "USD");
+
+        // Create and execute a deposit transaction to fund the source account
+        TransactionDto depositTransaction = createDepositTransaction(sourceAccount.getId(), new BigDecimal("1000.00"), "Initial deposit");
+        executeTransaction(sourceAccount.getId(), depositTransaction.getId());
+
+        // Check the source account balance
+        BigDecimal sourceBalanceBeforeTransfer = getAccountBalance(sourceAccount.getId());
+        assertThat(sourceBalanceBeforeTransfer).isEqualByComparingTo(new BigDecimal("1000.00"));
+
+        // Check the destination account balance
+        BigDecimal destinationBalanceBeforeTransfer = getAccountBalance(destinationAccount.getId());
+        assertThat(destinationBalanceBeforeTransfer).isEqualByComparingTo(new BigDecimal("0.00"));
+
+        // Create a transfer transaction
+        TransactionDto transferTransaction = createTransferTransaction(
+                sourceAccount.getId(), 
+                destinationAccount.getId(), 
+                new BigDecimal("300.00"), 
+                "Test transfer");
+
+        // Execute the transfer transaction
+        executeTransaction(sourceAccount.getId(), transferTransaction.getId());
+
+        // Check the source account balance after transfer
+        BigDecimal sourceBalanceAfterTransfer = getAccountBalance(sourceAccount.getId());
+        assertThat(sourceBalanceAfterTransfer).isEqualByComparingTo(new BigDecimal("700.00"));
+
+        // Check the destination account balance after transfer
+        BigDecimal destinationBalanceAfterTransfer = getAccountBalance(destinationAccount.getId());
+        assertThat(destinationBalanceAfterTransfer).isEqualByComparingTo(new BigDecimal("300.00"));
+    }
+
+    @Test
+    public void testInsufficientFundsForTransfer() {
+        // Create source account
+        AccountDto sourceAccount = createTestAccount("Transfer Insufficient Funds Source Account", "USD");
+
+        // Create destination account
+        AccountDto destinationAccount = createTestAccount("Transfer Insufficient Funds Destination Account", "USD");
+
+        // Create a transfer transaction with an amount greater than the source account balance
+        TransactionDto transferTransaction = createTransferTransaction(
+                sourceAccount.getId(), 
+                destinationAccount.getId(), 
+                new BigDecimal("100.00"), 
+                "Transfer with insufficient funds");
+
+        // Try to execute the transaction
+        ResponseEntity<TransactionDto> response = restTemplate.postForEntity(
+                "/accounts/" + sourceAccount.getId() + "/transactions/" + transferTransaction.getId() + "/execute", 
+                null, 
+                TransactionDto.class);
+
+        // Should return a bad request status
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

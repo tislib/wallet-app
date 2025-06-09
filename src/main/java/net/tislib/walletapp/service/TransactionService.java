@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import net.tislib.walletapp.dto.DepositTransactionData;
 import net.tislib.walletapp.dto.TransactionData;
 import net.tislib.walletapp.dto.TransactionDto;
+import net.tislib.walletapp.dto.TransferTransactionData;
 import net.tislib.walletapp.dto.WithdrawTransactionData;
 import net.tislib.walletapp.entity.AccountEntity;
 import net.tislib.walletapp.entity.TransactionEntity;
@@ -110,6 +111,9 @@ public class TransactionService {
                 case WITHDRAW:
                     processWithdraw(transaction);
                     break;
+                case TRANSFER:
+                    processTransfer(transaction);
+                    break;
                 default:
                     throw new IllegalStateException("Unsupported transaction type: " + transaction.getType());
             }
@@ -155,6 +159,31 @@ public class TransactionService {
         // No need to update balance as it's calculated dynamically
     }
 
+    private void processTransfer(TransactionEntity transaction) {
+        TransactionData data = transaction.getTransactionData();
+        if (!(data instanceof TransferTransactionData transferData)) {
+            throw new IllegalStateException("Transaction data type does not match transaction type");
+        }
+
+        Long sourceAccountId = transaction.getAccount().getId();
+        Long destinationAccountId = transferData.getDestinationAccountId();
+
+        // Verify destination account exists
+        AccountEntity destinationAccount = accountRepository.findById(destinationAccountId)
+                .orElseThrow(() -> new NoSuchElementException("Destination account not found with id: " + destinationAccountId));
+
+        BigDecimal currentBalance = calculateAccountBalance(sourceAccountId);
+        BigDecimal transferAmount = transferData.getAmount();
+        BigDecimal newBalance = currentBalance.subtract(transferAmount);
+
+        // Ensure source account has enough balance
+        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalStateException("Insufficient funds for transfer");
+        }
+
+        // No need to update balances as they're calculated dynamically
+    }
+
     private void validateTransactionDto(TransactionDto transactionDto) {
         if (transactionDto.getType() == null) {
             throw new IllegalArgumentException("Transaction type cannot be null");
@@ -186,6 +215,9 @@ public class TransactionService {
             case WITHDRAW:
                 validateWithdrawData((WithdrawTransactionData) data);
                 break;
+            case TRANSFER:
+                validateTransferData((TransferTransactionData) data);
+                break;
             default:
                 throw new IllegalArgumentException("Unsupported transaction type: " + type);
         }
@@ -203,40 +235,35 @@ public class TransactionService {
         }
     }
 
+    private void validateTransferData(TransferTransactionData data) {
+        if (data.getAmount() == null || data.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Transfer amount must be positive");
+        }
+
+        if (data.getDestinationAccountId() == null) {
+            throw new IllegalArgumentException("Destination account ID cannot be null");
+        }
+    }
+
     @Transactional(readOnly = true)
     public BigDecimal calculateAccountBalance(Long accountId) {
         // Verify account exists
         AccountEntity account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + accountId));
 
-        // Get all completed transactions for the account
-        List<TransactionEntity> transactions = transactionRepository.findByAccountIdAndStatus(accountId, TransactionStatus.DONE);
+        // Get sum of deposit transactions for the account
+        BigDecimal depositSum = transactionRepository.getSumOfDepositTransactionsForAccount(accountId);
 
-        // Group transactions by type and calculate total amount for each type
-        Map<TransactionType, BigDecimal> totalsByType = transactions.stream()
-                .collect(Collectors.groupingBy(
-                        TransactionEntity::getType,
-                        Collectors.mapping(
-                                transaction -> {
-                                    TransactionData data = transaction.getTransactionData();
-                                    if (data instanceof DepositTransactionData) {
-                                        return ((DepositTransactionData) data).getAmount();
-                                    } else if (data instanceof WithdrawTransactionData) {
-                                        return ((WithdrawTransactionData) data).getAmount();
-                                    }
-                                    return BigDecimal.ZERO;
-                                },
-                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add)
-                        )
-                ));
+        // Get sum of withdraw transactions for the account
+        BigDecimal withdrawSum = transactionRepository.getSumOfWithdrawTransactionsForAccount(accountId);
 
-        // Get total deposit amount (or 0 if no deposits)
-        BigDecimal totalDeposits = totalsByType.getOrDefault(TransactionType.DEPOSIT, BigDecimal.ZERO);
+        // Get sum of outgoing transfer transactions for the account
+        BigDecimal outgoingTransferSum = transactionRepository.getSumOfOutgoingTransferTransactionsForAccount(accountId);
 
-        // Get total withdraw amount (or 0 if no withdrawals)
-        BigDecimal totalWithdraws = totalsByType.getOrDefault(TransactionType.WITHDRAW, BigDecimal.ZERO);
+        // Get sum of incoming transfer transactions for the account
+        BigDecimal incomingTransferSum = transactionRepository.getSumOfIncomingTransferTransactionsForAccount(accountId);
 
-        // Calculate final balance: deposits - withdrawals
-        return totalDeposits.subtract(totalWithdraws);
+        // Calculate final balance: deposits + incoming transfers - withdrawals - outgoing transfers
+        return depositSum.add(incomingTransferSum).subtract(withdrawSum).subtract(outgoingTransferSum);
     }
 }

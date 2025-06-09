@@ -10,9 +10,10 @@ import net.tislib.walletapp.model.TransactionType;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
     @JsonSubTypes.Type(value = DepositTransactionData.class, name = "DEPOSIT"),
-    @JsonSubTypes.Type(value = WithdrawTransactionData.class, name = "WITHDRAW")
+    @JsonSubTypes.Type(value = WithdrawTransactionData.class, name = "WITHDRAW"),
+    @JsonSubTypes.Type(value = TransferTransactionData.class, name = "TRANSFER")
 })
-public sealed interface TransactionData permits DepositTransactionData, WithdrawTransactionData {
+public sealed interface TransactionData permits DepositTransactionData, WithdrawTransactionData, TransferTransactionData {
     /**
      * Gets the transaction type.
      *
