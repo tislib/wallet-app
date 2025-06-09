@@ -1,6 +1,11 @@
 package net.tislib.walletapp;
 
 import net.tislib.walletapp.dto.AccountDto;
+import net.tislib.walletapp.dto.DepositTransactionData;
+import net.tislib.walletapp.dto.TransactionDto;
+import net.tislib.walletapp.dto.WithdrawTransactionData;
+import net.tislib.walletapp.model.TransactionStatus;
+import net.tislib.walletapp.model.TransactionType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,16 +29,26 @@ public class AccountControllerIT {
     private TestRestTemplate restTemplate;
 
     // Helper method to create a test account
-    private AccountDto createTestAccount(String name, String currency, BigDecimal balance) {
+    private AccountDto createTestAccount(String name, String currency) {
         AccountDto newAccount = new AccountDto();
         newAccount.setName(name);
         newAccount.setCurrency(currency);
-        newAccount.setBalance(balance);
 
         ResponseEntity<AccountDto> response = restTemplate.postForEntity(
                 "/accounts", newAccount, AccountDto.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+
+        return response.getBody();
+    }
+
+    // Helper method to get account balance
+    private BigDecimal getAccountBalance(Long accountId) {
+        ResponseEntity<BigDecimal> response = restTemplate.getForEntity(
+                "/accounts/" + accountId + "/balance", BigDecimal.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
 
         return response.getBody();
@@ -45,7 +60,6 @@ public class AccountControllerIT {
         AccountDto newAccount = new AccountDto();
         newAccount.setName("Test Account");
         newAccount.setCurrency("USD");
-        newAccount.setBalance(new BigDecimal("100.00"));
 
         ResponseEntity<AccountDto> response = restTemplate.postForEntity(
                 "/accounts", newAccount, AccountDto.class);
@@ -55,14 +69,13 @@ public class AccountControllerIT {
         assertThat(response.getBody().getId()).isNotNull();
         assertThat(response.getBody().getName()).isEqualTo("Test Account");
         assertThat(response.getBody().getCurrency()).isEqualTo("USD");
-        assertThat(response.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("100.00"));
         assertThat(response.getBody().getCreatedAt()).isNotNull();
     }
 
     @Test
     public void testGetAccountById() {
         // Create a test account first
-        AccountDto createdAccount = createTestAccount("Get Test Account", "EUR", new BigDecimal("200.00"));
+        AccountDto createdAccount = createTestAccount("Get Test Account", "EUR");
 
         // Get the account by ID
         ResponseEntity<AccountDto> response = restTemplate.getForEntity(
@@ -73,7 +86,6 @@ public class AccountControllerIT {
         assertThat(response.getBody().getId()).isEqualTo(createdAccount.getId());
         assertThat(response.getBody().getName()).isEqualTo("Get Test Account");
         assertThat(response.getBody().getCurrency()).isEqualTo("EUR");
-        assertThat(response.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("200.00"));
     }
 
     @Test
@@ -88,8 +100,8 @@ public class AccountControllerIT {
     @Test
     public void testGetAllAccounts() {
         // Create a few test accounts
-        createTestAccount("Account 1", "USD", new BigDecimal("100.00"));
-        createTestAccount("Account 2", "EUR", new BigDecimal("200.00"));
+        createTestAccount("Account 1", "USD");
+        createTestAccount("Account 2", "EUR");
 
         // Get all accounts
         ResponseEntity<List<AccountDto>> response = restTemplate.exchange(
@@ -110,11 +122,9 @@ public class AccountControllerIT {
             if ("Account 1".equals(account.getName())) {
                 foundAccount1 = true;
                 assertThat(account.getCurrency()).isEqualTo("USD");
-                assertThat(account.getBalance()).isEqualByComparingTo(new BigDecimal("100.00"));
             } else if ("Account 2".equals(account.getName())) {
                 foundAccount2 = true;
                 assertThat(account.getCurrency()).isEqualTo("EUR");
-                assertThat(account.getBalance()).isEqualByComparingTo(new BigDecimal("200.00"));
             }
         }
 
@@ -125,12 +135,11 @@ public class AccountControllerIT {
     @Test
     public void testUpdateAccount() {
         // Create a test account first
-        AccountDto createdAccount = createTestAccount("Update Test Account", "USD", new BigDecimal("300.00"));
+        AccountDto createdAccount = createTestAccount("Update Test Account", "USD");
 
         // Update the account
         createdAccount.setName("Updated Account");
         createdAccount.setCurrency("GBP");
-        createdAccount.setBalance(new BigDecimal("350.00"));
 
         HttpEntity<AccountDto> requestEntity = new HttpEntity<>(createdAccount);
 
@@ -145,7 +154,6 @@ public class AccountControllerIT {
         assertThat(response.getBody().getId()).isEqualTo(createdAccount.getId());
         assertThat(response.getBody().getName()).isEqualTo("Updated Account");
         assertThat(response.getBody().getCurrency()).isEqualTo("GBP");
-        assertThat(response.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("350.00"));
 
         // Verify the update by getting the account again
         ResponseEntity<AccountDto> getResponse = restTemplate.getForEntity(
@@ -155,7 +163,6 @@ public class AccountControllerIT {
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getName()).isEqualTo("Updated Account");
         assertThat(getResponse.getBody().getCurrency()).isEqualTo("GBP");
-        assertThat(getResponse.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("350.00"));
         assertThat(getResponse.getBody().getUpdatedAt()).isNotNull();
     }
 
@@ -165,7 +172,6 @@ public class AccountControllerIT {
         AccountDto nonExistentAccount = new AccountDto();
         nonExistentAccount.setName("Non-existent Account");
         nonExistentAccount.setCurrency("USD");
-        nonExistentAccount.setBalance(new BigDecimal("100.00"));
 
         HttpEntity<AccountDto> requestEntity = new HttpEntity<>(nonExistentAccount);
 
@@ -181,7 +187,7 @@ public class AccountControllerIT {
     @Test
     public void testDeleteAccount() {
         // Create a test account first
-        AccountDto createdAccount = createTestAccount("Delete Test Account", "JPY", new BigDecimal("0.00"));
+        AccountDto createdAccount = createTestAccount("Delete Test Account", "JPY");
 
         // Delete the account
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
@@ -202,7 +208,7 @@ public class AccountControllerIT {
     @Test
     public void testDeleteAccountWithBalance() {
         // Create a test account with a balance
-        AccountDto createdAccount = createTestAccount("Delete Test Account With Balance", "JPY", new BigDecimal("500.00"));
+        AccountDto createdAccount = createTestAccount("Delete Test Account With Balance", "JPY");
 
         // Try to delete the account with balance
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
@@ -228,7 +234,6 @@ public class AccountControllerIT {
         // Create an account DTO with null name
         AccountDto accountDto = new AccountDto();
         accountDto.setCurrency("USD");
-        accountDto.setBalance(new BigDecimal("100.00"));
 
         HttpEntity<AccountDto> requestEntity = new HttpEntity<>(accountDto);
 
@@ -249,7 +254,6 @@ public class AccountControllerIT {
         AccountDto accountDto = new AccountDto();
         accountDto.setName("Negative Balance Account");
         accountDto.setCurrency("USD");
-        accountDto.setBalance(new BigDecimal("-100.00"));
 
         HttpEntity<AccountDto> requestEntity = new HttpEntity<>(accountDto);
 
@@ -279,8 +283,8 @@ public class AccountControllerIT {
     @Test
     public void testCreateListDeleteFlow() {
         // Create multiple accounts
-        AccountDto account1 = createTestAccount("Flow Account 1", "USD", new BigDecimal("100.00"));
-        AccountDto account2 = createTestAccount("Flow Account 2", "EUR", new BigDecimal("200.00"));
+        AccountDto account1 = createTestAccount("Flow Account 1", "USD");
+        AccountDto account2 = createTestAccount("Flow Account 2", "EUR");
 
         // Get all accounts and verify our accounts are there
         ResponseEntity<List<AccountDto>> listResponse = restTemplate.exchange(
@@ -307,7 +311,6 @@ public class AccountControllerIT {
         assertThat(foundAccount2).isTrue();
 
         // Set balance to zero before deleting
-        account1.setBalance(BigDecimal.ZERO);
         HttpEntity<AccountDto> updateRequest = new HttpEntity<>(account1);
         restTemplate.exchange(
                 "/accounts/" + account1.getId(),
@@ -352,11 +355,10 @@ public class AccountControllerIT {
     @Test
     public void testCreateUpdateGetFlow() {
         // Create an account
-        AccountDto createdAccount = createTestAccount("Update Flow Account", "USD", new BigDecimal("100.00"));
+        AccountDto createdAccount = createTestAccount("Update Flow Account", "USD");
 
         // Update the account
         createdAccount.setName("Updated Flow Account");
-        createdAccount.setBalance(new BigDecimal("150.00"));
 
         HttpEntity<AccountDto> requestEntity = new HttpEntity<>(createdAccount);
 
@@ -369,7 +371,6 @@ public class AccountControllerIT {
         assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResponse.getBody()).isNotNull();
         assertThat(updateResponse.getBody().getName()).isEqualTo("Updated Flow Account");
-        assertThat(updateResponse.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("150.00"));
 
         // Get the account and verify the updates
         ResponseEntity<AccountDto> getResponse = restTemplate.getForEntity(
@@ -378,7 +379,56 @@ public class AccountControllerIT {
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResponse.getBody()).isNotNull();
         assertThat(getResponse.getBody().getName()).isEqualTo("Updated Flow Account");
-        assertThat(getResponse.getBody().getBalance()).isEqualByComparingTo(new BigDecimal("150.00"));
         assertThat(getResponse.getBody().getUpdatedAt()).isNotNull();
+    }
+
+
+    @Test
+    public void testGetAccountBalance() {
+        // Create a test account
+        AccountDto account = createTestAccount("Balance Test Account", "USD");
+        Long accountId = account.getId();
+
+        // Initial balance should be zero
+        BigDecimal initialBalance = getAccountBalance(accountId);
+        assertThat(initialBalance).isEqualTo(BigDecimal.ZERO);
+
+        // Create a deposit transaction using TransactionControllerIT approach
+        // First, create the transaction data
+        DepositTransactionData depositData = new DepositTransactionData();
+        depositData.setAmount(new BigDecimal("100.00"));
+        depositData.setDescription("Test deposit");
+
+        // Then create the transaction DTO
+        TransactionDto depositTransaction = new TransactionDto();
+        depositTransaction.setType(TransactionType.DEPOSIT);
+        depositTransaction.setAccountId(accountId);
+        depositTransaction.setData(depositData);
+
+        // Post the transaction
+        HttpEntity<TransactionDto> depositEntity = new HttpEntity<>(depositTransaction);
+        ResponseEntity<TransactionDto> depositResponse = restTemplate.exchange(
+                "/accounts/" + accountId + "/transactions",
+                HttpMethod.POST,
+                depositEntity,
+                TransactionDto.class);
+
+        assertThat(depositResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(depositResponse.getBody()).isNotNull();
+
+        // Execute the transaction
+        Long depositTransactionId = depositResponse.getBody().getId();
+        ResponseEntity<TransactionDto> executeDepositResponse = restTemplate.postForEntity(
+                "/accounts/" + accountId + "/transactions/" + depositTransactionId + "/execute",
+                null,
+                TransactionDto.class);
+
+        assertThat(executeDepositResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(executeDepositResponse.getBody()).isNotNull();
+        assertThat(executeDepositResponse.getBody().getStatus()).isEqualTo(TransactionStatus.DONE);
+
+        // Balance should now be 100.00
+        BigDecimal balanceAfterDeposit = getAccountBalance(accountId);
+        assertThat(balanceAfterDeposit).isEqualByComparingTo(new BigDecimal("100.00"));
     }
 }

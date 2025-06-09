@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,7 @@ public class TransactionService {
         validateTransactionDto(transactionDto);
 
         TransactionEntity transaction = transactionMapper.toEntity(transactionDto);
+        transaction.setStatus(TransactionStatus.PENDING);
         TransactionEntity savedTransaction = transactionRepository.save(transaction);
 
         return transactionMapper.toDto(savedTransaction);
@@ -126,32 +129,30 @@ public class TransactionService {
     }
 
     private void processDeposit(TransactionEntity transaction) {
-        TransactionData data = transactionMapper.deserializeTransactionData(transaction.getTransactionData());
+        TransactionData data = transaction.getTransactionData();
         if (!(data instanceof DepositTransactionData depositData)) {
             throw new IllegalStateException("Transaction data type does not match transaction type");
         }
 
-        AccountEntity account = transaction.getAccount();
-        account.setBalance(account.getBalance().add(depositData.getAmount()));
-        accountRepository.save(account);
+        // No need to update balance as it's calculated dynamically
     }
 
     private void processWithdraw(TransactionEntity transaction) {
-        TransactionData data = transactionMapper.deserializeTransactionData(transaction.getTransactionData());
+        TransactionData data = transaction.getTransactionData();
         if (!(data instanceof WithdrawTransactionData withdrawData)) {
             throw new IllegalStateException("Transaction data type does not match transaction type");
         }
 
-        AccountEntity account = transaction.getAccount();
-        BigDecimal newBalance = account.getBalance().subtract(withdrawData.getAmount());
+        Long accountId = transaction.getAccount().getId();
+        BigDecimal currentBalance = calculateAccountBalance(accountId);
+        BigDecimal newBalance = currentBalance.subtract(withdrawData.getAmount());
 
         // Ensure balance doesn't become negative
         if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalStateException("Insufficient funds for withdrawal");
         }
 
-        account.setBalance(newBalance);
-        accountRepository.save(account);
+        // No need to update balance as it's calculated dynamically
     }
 
     private void validateTransactionDto(TransactionDto transactionDto) {
@@ -171,9 +172,9 @@ public class TransactionService {
         TransactionData data = transactionDto.getData();
         TransactionType type = transactionDto.getType();
 
-        if (type != data.getType()) {
+        if (type != data.type()) {
             throw new IllegalArgumentException(
-                    "Transaction data type (" + data.getType() + 
+                    "Transaction data type (" + data.type() +
                     ") does not match transaction type (" + type + ")");
         }
 
@@ -200,5 +201,42 @@ public class TransactionService {
         if (data.getAmount() == null || data.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Withdrawal amount must be positive");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal calculateAccountBalance(Long accountId) {
+        // Verify account exists
+        AccountEntity account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + accountId));
+
+        // Get all completed transactions for the account
+        List<TransactionEntity> transactions = transactionRepository.findByAccountIdAndStatus(accountId, TransactionStatus.DONE);
+
+        // Group transactions by type and calculate total amount for each type
+        Map<TransactionType, BigDecimal> totalsByType = transactions.stream()
+                .collect(Collectors.groupingBy(
+                        TransactionEntity::getType,
+                        Collectors.mapping(
+                                transaction -> {
+                                    TransactionData data = transaction.getTransactionData();
+                                    if (data instanceof DepositTransactionData) {
+                                        return ((DepositTransactionData) data).getAmount();
+                                    } else if (data instanceof WithdrawTransactionData) {
+                                        return ((WithdrawTransactionData) data).getAmount();
+                                    }
+                                    return BigDecimal.ZERO;
+                                },
+                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add)
+                        )
+                ));
+
+        // Get total deposit amount (or 0 if no deposits)
+        BigDecimal totalDeposits = totalsByType.getOrDefault(TransactionType.DEPOSIT, BigDecimal.ZERO);
+
+        // Get total withdraw amount (or 0 if no withdrawals)
+        BigDecimal totalWithdraws = totalsByType.getOrDefault(TransactionType.WITHDRAW, BigDecimal.ZERO);
+
+        // Calculate final balance: deposits - withdrawals
+        return totalDeposits.subtract(totalWithdraws);
     }
 }

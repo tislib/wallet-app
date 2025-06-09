@@ -18,5 +18,5 @@ public sealed interface TransactionData permits DepositTransactionData, Withdraw
      *
      * @return the transaction type
      */
-    TransactionType getType();
+    TransactionType type();
 }

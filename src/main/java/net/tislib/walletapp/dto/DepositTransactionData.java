@@ -16,7 +16,7 @@ public final class DepositTransactionData implements TransactionData {
     private String description;
 
     @Override
-    public TransactionType getType() {
+    public TransactionType type() {
         return TransactionType.DEPOSIT;
     }
 }

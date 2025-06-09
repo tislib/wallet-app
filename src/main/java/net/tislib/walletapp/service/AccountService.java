@@ -2,8 +2,13 @@ package net.tislib.walletapp.service;
 
 import net.tislib.walletapp.dto.AccountDto;
 import net.tislib.walletapp.entity.AccountEntity;
+import net.tislib.walletapp.entity.TransactionEntity;
 import net.tislib.walletapp.mapper.AccountMapper;
+import net.tislib.walletapp.mapper.TransactionMapper;
+import net.tislib.walletapp.model.TransactionStatus;
+import net.tislib.walletapp.model.TransactionType;
 import net.tislib.walletapp.repository.AccountRepository;
+import net.tislib.walletapp.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +23,9 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final AccountMapper accountMapper;
+    private final TransactionRepository transactionRepository;
+    private final TransactionMapper transactionMapper;
+    private final TransactionService transactionService;
 
     @Transactional(readOnly = true)
     public List<AccountDto> getAllAccounts() {
@@ -44,10 +52,6 @@ public class AccountService {
         if (accountDto.getName() == null) {
             throw new IllegalArgumentException("Account name cannot be null");
         }
-
-        if (accountDto.getBalance() != null && accountDto.getBalance().compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Account balance must be positive or zero");
-        }
     }
 
     @Transactional
@@ -62,12 +66,19 @@ public class AccountService {
         return accountMapper.toDto(updatedAccount);
     }
 
+    @Transactional(readOnly = true)
+    public BigDecimal calculateAccountBalance(Long accountId) {
+        // Delegate to TransactionService for more efficient calculation
+        return transactionService.calculateAccountBalance(accountId);
+    }
+
     @Transactional
     public void deleteAccount(Long id) {
         AccountEntity account = accountRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + id));
 
-        if (account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
+        BigDecimal balance = calculateAccountBalance(id);
+        if (balance.compareTo(BigDecimal.ZERO) > 0) {
             throw new IllegalStateException("Cannot delete account with a positive balance");
         }
 

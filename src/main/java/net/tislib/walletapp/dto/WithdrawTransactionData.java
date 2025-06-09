@@ -16,7 +16,7 @@ public final class WithdrawTransactionData implements TransactionData {
     private String description;
 
     @Override
-    public TransactionType getType() {
+    public TransactionType type() {
         return TransactionType.WITHDRAW;
     }
 }

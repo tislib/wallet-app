@@ -17,20 +17,17 @@ import java.util.NoSuchElementException;
 public abstract class TransactionMapper {
 
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
     private AccountRepository accountRepository;
 
     @Mapping(target = "accountId", source = "account.id")
-    @Mapping(target = "data", expression = "java(deserializeTransactionData(entity.getTransactionData()))")
+    @Mapping(target = "data", source = "transactionData")
     public abstract TransactionDto toDto(TransactionEntity entity);
 
     public abstract List<TransactionDto> toDtoList(List<TransactionEntity> entities);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "account", expression = "java(findAccountById(dto.getAccountId()))")
-    @Mapping(target = "transactionData", expression = "java(serializeTransactionData(dto.getData()))")
+    @Mapping(target = "transactionData", source = "data")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
@@ -38,7 +35,7 @@ public abstract class TransactionMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "account", expression = "java(dto.getAccountId() != null ? findAccountById(dto.getAccountId()) : entity.getAccount())")
-    @Mapping(target = "transactionData", expression = "java(dto.getData() != null ? serializeTransactionData(dto.getData()) : entity.getTransactionData())")
+    @Mapping(target = "transactionData", source = "data")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "version", ignore = true)
@@ -50,21 +47,5 @@ public abstract class TransactionMapper {
         }
         return accountRepository.findById(accountId)
                 .orElseThrow(() -> new NoSuchElementException("Account not found with id: " + accountId));
-    }
-
-    public String serializeTransactionData(TransactionData data) {
-        try {
-            return objectMapper.writeValueAsString(data);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error serializing transaction data", e);
-        }
-    }
-
-    public TransactionData deserializeTransactionData(String json) {
-        try {
-            return objectMapper.readValue(json, TransactionData.class);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error deserializing transaction data", e);
-        }
     }
 }

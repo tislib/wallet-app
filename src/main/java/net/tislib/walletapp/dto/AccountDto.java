@@ -9,7 +9,6 @@ public class AccountDto {
     private Long id;
     private String name;
     private String currency;
-    private BigDecimal balance;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

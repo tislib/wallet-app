@@ -8,6 +8,8 @@ import lombok.ToString;
 import net.tislib.walletapp.dto.TransactionData;
 import net.tislib.walletapp.model.TransactionStatus;
 import net.tislib.walletapp.model.TransactionType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -35,8 +37,9 @@ public class TransactionEntity {
     @JoinColumn(name = "account_id", nullable = false)
     private AccountEntity account;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "transaction_data", columnDefinition = "jsonb", nullable = false)
-    private String transactionData;
+    private TransactionData transactionData;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
